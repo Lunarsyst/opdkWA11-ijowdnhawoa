@@ -5,6 +5,7 @@ local Config = {
         "shwagglite-279",
         "ifuguessthisugotit",
         "boy8989",
+        "aegis-prem-10nFigR5",
     },
 
     ScriptURL = "https://raw.githubusercontent.com/Lunarsyst/093812r809hjiHSDUOAF814r0/refs/heads/main/ccas.lua",
