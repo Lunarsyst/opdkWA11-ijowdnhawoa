@@ -9,7 +9,7 @@ local Config = {
     },
 
     BannedHWIDs = {
-         ["D79CCECFF7319C9DE3F97FD81C0468"] = "test",
+        -- ["D79CCECFF7319C9DE3F97FD81C0468"] = "test", me btw
         -- ["a1b2c3d4-example-hwid"] = "Leaked script",
     },
 
