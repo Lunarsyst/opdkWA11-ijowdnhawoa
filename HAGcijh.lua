@@ -8,35 +8,36 @@ local Config = {
         "aegis-prem-10nFigR5",
     },
 
+    BannedHWIDs = {
+         ["D79CCECFF7319C9DE3F97FD81C0468"] = "test",
+        -- ["a1b2c3d4-example-hwid"] = "Leaked script",
+    },
+
+    BannedUserIDs = {
+        -- [USER_ID_HERE] = "reason",
+        -- [123456789] = "Shared key publicly",
+    },
+
     ScriptURL = "https://raw.githubusercontent.com/Lunarsyst/093812r809hjiHSDUOAF814r0/refs/heads/main/ccas.lua",
 
     WebhookURL = "https://discordapp.com/api/webhooks/1471589603361292348/QQxzy3LKLhrhEfNqIEu-bmlv4aNF6gyViiP-cM52bcQR6qGsz6zPRDnwqHaggK_By-VS",
 
-    -- Webhook embed settings
     Webhook = {
-        -- Embed colors (decimal)
-        AcceptedColor = 3066993,   -- Green
-        DeclinedColor = 15158332,  -- Red
-        ErrorColor    = 15105570,  -- Orange
+        AcceptedColor = 3066993,
+        DeclinedColor = 15158332,
+        ErrorColor    = 15105570,
+        BannedColor   = 10038562,
 
-        -- Footer text
-        FooterText = "Aegis Loader",
+        FooterText    = "Aegis Loader",
+        CensorKey     = true,
+        LogDeclined   = true,
+        LogErrors     = true,
 
-        -- Censor middle of the key in logs? (security)
-        CensorKey = true,
-
-        -- Log declined/invalid attempts too?
-        LogDeclined = true,
-
-        -- Log errors?
-        LogErrors = true,
-
-        -- Ping a role/user on new execution? (leave "" to disable)
-        PingOnAccept  = "",  -- e.g. "<@123456789>" or "<@&ROLEID>"
+        PingOnBanned  = "<@1023326249306816562>",
+        PingOnAccept  = "",
         PingOnDecline = "",
     },
 
-    -- Notifications
     Notifications = {
         Accepted = {
             Title    = "Aegis Loader",
@@ -45,7 +46,7 @@ local Config = {
         },
         Declined = {
             Title    = "Aegis Loader",
-            Message  = "Invalid key!.",
+            Message  = "Invalid key!",
             Duration = 5,
         },
         Loaded = {
@@ -62,6 +63,11 @@ local Config = {
             Title    = "Aegis Loader",
             Message  = "No key provided!",
             Duration = 5,
+        },
+        Banned = {
+            Title    = "Aegis Loader",
+            Message  = "Banned, contact 1_aegis on discord for reason.",
+            Duration = 10,
         },
     },
 
@@ -109,7 +115,6 @@ local function IsKeyValid(key)
     return false
 end
 
--- Universal HTTP request (works across most executors)
 local function HttpPost(url, body, headers)
     local request = (syn and syn.request)
         or (http and http.request)
@@ -126,19 +131,16 @@ local function HttpPost(url, body, headers)
         })
         return success, response
     else
-        Log("No HTTP request function found on this executor.")
         return false, "No request function"
     end
 end
 
--- Censor a key: "supersecrethappytime" → "sup***************me"
 local function CensorKey(key)
     if not Config.Webhook.CensorKey then return key end
     if #key <= 6 then return string.rep("*", #key) end
     return key:sub(1, 3) .. string.rep("*", #key - 5) .. key:sub(-2)
 end
 
--- Get executor name
 local function GetExecutor()
     local name = "Unknown"
     pcall(function()
@@ -151,7 +153,6 @@ local function GetExecutor()
     return name
 end
 
--- Get HWID (if available — for banning/tracking)
 local function GetHWID()
     local hwid = "Unavailable"
     pcall(function()
@@ -164,7 +165,6 @@ local function GetHWID()
     return hwid
 end
 
--- Get game name safely
 local function GetGameName()
     local name = "Unknown"
     pcall(function()
@@ -176,28 +176,37 @@ local function GetGameName()
     return name
 end
 
--- Get avatar headshot URL
 local function GetAvatarURL(userId)
     return "https://www.roblox.com/headshot-thumbnail/image?userId="
         .. tostring(userId)
         .. "&width=420&height=420&format=png"
 end
 
--- Get current UTC time
 local function GetTimestamp()
     return os.date("!%Y/%m/%d %H:%M:%S UTC")
 end
 
 -- ============================================
--- WEBHOOK TRACKER
+-- BAN CHECK
 -- ============================================
 
-local function SendWebhook(status, userKey)
-    if Config.WebhookURL == "YOUR_DISCORD_WEBHOOK_URL_HERE" then
-        Log("Webhook URL not set — skipping tracking.")
-        return
+local function CheckBanned(hwid, userId)
+    if Config.BannedHWIDs[hwid] then
+        return true, Config.BannedHWIDs[hwid], "HWID Ban"
     end
 
+    if Config.BannedUserIDs[userId] then
+        return true, Config.BannedUserIDs[userId], "UserID Ban"
+    end
+
+    return false, nil, nil
+end
+
+-- ============================================
+-- WEBHOOK
+-- ============================================
+
+local function SendWebhook(status, userKey, banReason, banSource)
     local userId      = LocalPlayer.UserId
     local username    = LocalPlayer.Name
     local displayName = LocalPlayer.DisplayName
@@ -211,82 +220,93 @@ local function SendWebhook(status, userKey)
     local timestamp   = GetTimestamp()
     local censoredKey = CensorKey(tostring(userKey or "None"))
 
-    local color, title, statusIcon, ping
+    local color, title, ping
 
     if status == "accepted" then
-        color      = Config.Webhook.AcceptedColor
-        title      = "Script Executed — Key Accepted"
-        statusIcon = ""
-        ping       = Config.Webhook.PingOnAccept
+        color = Config.Webhook.AcceptedColor
+        title = "Script Executed - Key Accepted"
+        ping  = Config.Webhook.PingOnAccept
     elseif status == "declined" then
-        color      = Config.Webhook.DeclinedColor
-        title      = "Execution Denied — Invalid Key"
-        statusIcon = ""
-        ping       = Config.Webhook.PingOnDecline
+        color = Config.Webhook.DeclinedColor
+        title = "Execution Denied - Invalid Key"
+        ping  = Config.Webhook.PingOnDecline
     elseif status == "error" then
-        color      = Config.Webhook.ErrorColor
-        title      = "Execution Error"
-        statusIcon = ""
-        ping       = ""
+        color = Config.Webhook.ErrorColor
+        title = "Execution Error"
+        ping  = ""
     elseif status == "nokey" then
-        color      = Config.Webhook.DeclinedColor
-        title      = "No Key Provided"
-        statusIcon = ""
-        ping       = Config.Webhook.PingOnDecline
+        color = Config.Webhook.DeclinedColor
+        title = "No Key Provided"
+        ping  = Config.Webhook.PingOnDecline
+    elseif status == "banned" then
+        color = Config.Webhook.BannedColor
+        title = "BANNED USER ATTEMPTED EXECUTION"
+        ping  = Config.Webhook.PingOnBanned
     end
+
+    local fields = {
+        {
+            name   = "Player Info",
+            value  = "```"
+                .. "\nUsername:     " .. username
+                .. "\nDisplay:     " .. displayName
+                .. "\nUser ID:     " .. tostring(userId)
+                .. "\n```",
+            inline = false,
+        },
+        {
+            name   = "Game Info",
+            value  = "```"
+                .. "\nGame:        " .. gameName
+                .. "\nPlace ID:    " .. placeId
+                .. "\nJob ID:      " .. jobId
+                .. "\n```",
+            inline = false,
+        },
+        {
+            name   = "Key Info",
+            value  = "```"
+                .. "\nKey Used:    " .. censoredKey
+                .. "\nStatus:      " .. status:upper()
+                .. "\n```",
+            inline = true,
+        },
+        {
+            name   = "Executor Info",
+            value  = "```"
+                .. "\nExecutor:    " .. executor
+                .. "\nHWID:        " .. hwid
+                .. "\n```",
+            inline = true,
+        },
+    }
+
+    if status == "banned" and banReason then
+        table.insert(fields, {
+            name   = "BAN DETAILS",
+            value  = "```"
+                .. "\nReason:      " .. tostring(banReason)
+                .. "\nBan Type:    " .. tostring(banSource)
+                .. "\nFull HWID:   " .. hwid
+                .. "\n```",
+            inline = false,
+        })
+    end
+
+    table.insert(fields, {
+        name   = "Profile Link",
+        value  = "[Click to view profile](" .. profileURL .. ")",
+        inline = false,
+    })
 
     local embed = {
         {
-            title       = title,
-            color       = color,
-            thumbnail   = {
-                url = avatarURL,
-            },
-            fields      = {
-                {
-                    name   = "Player Info",
-                    value  = "```"
-                        .. "\nUsername:     " .. username
-                        .. "\nDisplay:     " .. displayName
-                        .. "\nUser ID:     " .. tostring(userId)
-                        .. "\n```",
-                    inline = false,
-                },
-                {
-                    name   = "Game Info",
-                    value  = "```"
-                        .. "\nGame:        " .. gameName
-                        .. "\nPlace ID:    " .. placeId
-                        .. "\nJob ID:      " .. jobId
-                        .. "\n```",
-                    inline = false,
-                },
-                {
-                    name   = "Key Info",
-                    value  = "```"
-                        .. "\nKey Used:    " .. censoredKey
-                        .. "\nStatus:      " .. statusIcon .. " " .. status:upper()
-                        .. "\n```",
-                    inline = true,
-                },
-                {
-                    name   = "Executor Info",
-                    value  = "```"
-                        .. "\nExecutor:    " .. executor
-                        .. "\nHWID:        " .. hwid
-                        .. "\n```",
-                    inline = true,
-                },
-                {
-                    name   = "Profile Link",
-                    value  = "[Click to view profile](" .. profileURL .. ")",
-                    inline = false,
-                },
-            },
-            footer      = {
-                text = Config.Webhook.FooterText .. " • " .. timestamp,
-            },
-            timestamp   = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+            title     = title,
+            color     = color,
+            thumbnail = { url = avatarURL },
+            fields    = fields,
+            footer    = { text = Config.Webhook.FooterText .. " - " .. timestamp },
+            timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
         },
     }
 
@@ -298,12 +318,7 @@ local function SendWebhook(status, userKey)
     local body = HttpService:JSONEncode(payload)
 
     task.spawn(function()
-        local success, response = HttpPost(Config.WebhookURL, body)
-        if success then
-            Log("Webhook sent successfully (" .. status .. ")")
-        else
-            Log("Webhook failed: " .. tostring(response))
-        end
+        HttpPost(Config.WebhookURL, body)
     end)
 end
 
@@ -321,11 +336,9 @@ local function LoadScript(url)
             exec()
             return true
         else
-            Log("Loadstring error: " .. tostring(err))
             return false
         end
     else
-        Log("HttpGet error: " .. tostring(result))
         return false
     end
 end
@@ -335,13 +348,21 @@ end
 -- ============================================
 
 local function Main()
-    Log("Loader initialized.")
-
+    local hwid    = GetHWID()
+    local userId  = LocalPlayer.UserId
     local userKey = getgenv().AegisKey
 
-    -- No key provided
+    -- Ban check first
+    local isBanned, banReason, banSource = CheckBanned(hwid, userId)
+    if isBanned then
+        SendNotification(Config.Notifications.Banned)
+        SendWebhook("banned", userKey, banReason, banSource)
+        getgenv().AegisKey = nil
+        return
+    end
+
+    -- No key
     if not userKey then
-        Log("No key provided.")
         SendNotification(Config.Notifications.NoKey)
         if Config.Webhook.LogDeclined then
             SendWebhook("nokey", nil)
@@ -351,7 +372,6 @@ local function Main()
 
     -- Invalid key
     if not IsKeyValid(userKey) then
-        Log("Invalid key: " .. tostring(userKey))
         SendNotification(Config.Notifications.Declined)
         if Config.Webhook.LogDeclined then
             SendWebhook("declined", userKey)
@@ -359,29 +379,23 @@ local function Main()
         return
     end
 
-    -- Key accepted
-    Log("Key accepted!")
+    -- Accepted
     SendNotification(Config.Notifications.Accepted)
     SendWebhook("accepted", userKey)
 
     task.wait(1)
 
-    -- Load main script
-    Log("Loading script...")
     local loaded = LoadScript(Config.ScriptURL)
 
     if loaded then
-        Log("Script loaded successfully.")
         SendNotification(Config.Notifications.Loaded)
     else
-        Log("Script failed to load.")
         SendNotification(Config.Notifications.Error)
         if Config.Webhook.LogErrors then
             SendWebhook("error", userKey)
         end
     end
 
-    -- Clear key from memory
     getgenv().AegisKey = nil
 end
 
