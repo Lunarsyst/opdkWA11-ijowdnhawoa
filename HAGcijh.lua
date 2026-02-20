@@ -3,7 +3,7 @@ local Config = {
     ValidKeys = {
         "aegis-staff-27Dbh8d",
         "shwagglite-279",
-        "ifuguesstghisugotit",
+        "ifuguessthisugotit",
         "boy8989",
     },
 
