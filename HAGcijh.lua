@@ -6,6 +6,7 @@ local Config = {
         "ifuguessthisugotit",
         "boy8989",
         "aegis-prem-10nFigR5",
+        "aegis-prem-19JDuiuwa",
     },
 
     BannedHWIDs = {
